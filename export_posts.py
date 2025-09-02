@@ -6,7 +6,113 @@ from datetime import datetime
 import requests
 from atproto import Client
 
+
 def fetch_did_document(did: str, timeout: int = 10):
+
+def count_tokens_with_google_tokenizer(text):
+    """
+    Count tokens using Google's FLAN-T5 tokenizer for accurate Gemini estimates.
+    Returns token count or None if tokenizer unavailable.
+    """
+    try:
+        from transformers import AutoTokenizer
+        print("🔢 Counting tokens using Google FLAN-T5 tokenizer...")
+        tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small")
+        tokens = tokenizer.encode(text, add_special_tokens=True)
+        return len(tokens)
+    except ImportError:
+        print("⚠️  transformers not installed. Run: pip install transformers")
+        return None
+    except Exception as e:
+        print(f"⚠️  Error counting tokens: {e}")
+        return None
+
+def check_token_limit_and_offer_trim(filename, all_posts, handle):
+    """
+    Check if the exported JSON exceeds token limits and offer to trim if needed.
+    """
+    TOKEN_LIMIT = 950000  # 95% of 1M tokens
+    
+    # Read the exported file
+    with open(filename, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # Count tokens
+    token_count = count_tokens_with_google_tokenizer(content)
+    
+    if token_count is None:
+        print("\n⚠️  Could not count tokens. Install transformers for token analysis.")
+        return filename
+    
+    print(f"\n📊 Token Analysis:")
+    print(f"   Total tokens: {token_count:,}")
+    print(f"   Limit (95% of 1M): {TOKEN_LIMIT:,}")
+    
+    if token_count <= TOKEN_LIMIT:
+        print(f"✅ Token count is within limits! Ready for Gemini prompting.")
+        return filename
+    
+    # Calculate how many posts to remove
+    excess_tokens = token_count - TOKEN_LIMIT
+    avg_tokens_per_post = token_count // len(all_posts)
+    posts_to_remove = int(excess_tokens / avg_tokens_per_post * 1.1)  # 10% buffer
+    posts_to_keep = len(all_posts) - posts_to_remove
+    
+    print(f"\n⚠️  TOKEN LIMIT EXCEEDED!")
+    print(f"   Excess tokens: {excess_tokens:,}")
+    print(f"   Estimated posts to remove: {posts_to_remove:,} (oldest)")
+    print(f"   Posts that would remain: {posts_to_keep:,}")
+    print(f"\n💡 This dataset is too large for effective Gemini prompting.")
+    
+    # Offer to trim
+    while True:
+        choice = input("\n🤔 Remove oldest posts automatically to fit limit? (y/n): ").strip().lower()
+        if choice in ['y', 'yes']:
+            return trim_posts_and_reexport(filename, all_posts, posts_to_keep, handle)
+        elif choice in ['n', 'no']:
+            print("\n📁 Keeping full export. You may need to manually trim for Gemini use.")
+            return filename
+        else:
+            print("Please enter 'y' or 'n'")
+
+def trim_posts_and_reexport(original_filename, all_posts, posts_to_keep, handle):
+    """
+    Create a new trimmed export with only the newest posts.
+    """
+    print(f"\n✂️  Trimming to newest {posts_to_keep:,} posts...")
+    
+    # Keep only the newest posts (already sorted newest first)
+    trimmed_posts = all_posts[:posts_to_keep]
+    
+    # Create new filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    trimmed_filename = f"{handle}_posts_{timestamp}_trimmed.json"
+    
+    # Write trimmed data
+    with open(trimmed_filename, 'w', encoding='utf-8') as f:
+        json.dump(trimmed_posts, f, indent=2, ensure_ascii=False)
+    
+    # Verify token count of trimmed file
+    with open(trimmed_filename, 'r', encoding='utf-8') as f:
+        trimmed_content = f.read()
+    
+    trimmed_tokens = count_tokens_with_google_tokenizer(trimmed_content)
+    
+    print(f"\n✅ Trimmed export created!")
+    print(f"📁 Original: {original_filename} ({len(all_posts):,} posts)")
+    print(f"📁 Trimmed: {trimmed_filename} ({len(trimmed_posts):,} posts)")
+    
+    if trimmed_tokens:
+        print(f"🔢 Trimmed tokens: {trimmed_tokens:,}")
+        if trimmed_tokens <= 950000:
+            print(f"✅ Trimmed file is within token limits!")
+        else:
+            print(f"⚠️  Trimmed file may still be too large. Consider further trimming.")
+    
+    return trimmed_filename
+
+def export_posts_to_json(handle):
+
     """
     Fetch the DID document for a did:plc or did:web DID.
 
@@ -168,6 +274,16 @@ def export_posts_to_json(handle):
     print(f"\n✅ Export complete!")
     print(f"📊 Total posts exported: {len(all_posts)}")
     print(f"💾 Export saved to: {output_filename}")
+    
+    # Check token limits and offer trimming if needed
+    final_filename = check_token_limit_and_offer_trim(output_filename, all_posts, handle)
+    
+    if final_filename != output_filename:
+        print(f"\n🎯 Use this file for Gemini prompting: {final_filename}")
+    else:
+        print(f"\n🎯 File ready for Gemini prompting: {final_filename}")
+    
+    return final_filename
 
 
 if __name__ == '__main__':
@@ -180,4 +296,12 @@ if __name__ == '__main__':
     handle = sys.argv[1]
     print(f"🎯 Target account: {handle}")
     print(f"📥 Starting full export (no authentication)...")
+
     export_posts_to_json(handle)
+
+        
+    final_file = export_posts_to_json(handle)
+    
+    if final_file:
+        print(f"\n🚀 Ready to use with Gemini!")
+        print(f"📋 Tip: Copy the contents of '{final_file}' along with your prompt template.")
