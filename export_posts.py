@@ -45,7 +45,7 @@ def get_pds_endpoint_from_did_doc(did_doc: dict):
         sid = str(svc.get("id", ""))
         stype = svc.get("type", "")
         if sid.endswith("#atproto_pds") or stype == "AtprotoPersonalDataServer":
-            endpoint = svc.get("serviceEndpoint") or svc.get("serviceEndpoint")
+            endpoint = svc.get("serviceEndpoint")
             if isinstance(endpoint, str) and endpoint:
                 return endpoint.rstrip("/")  # ensure no trailing slash
     return None
