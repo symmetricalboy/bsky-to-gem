@@ -8,6 +8,24 @@ from atproto import Client
 
 
 def fetch_did_document(did: str, timeout: int = 10):
+    """Fetch the DID document for a did:plc or did:web DID."""
+    try:
+        if did.startswith("did:plc:"):
+            url = f"https://plc.directory/{did}"
+            r = requests.get(url, timeout=timeout)
+            r.raise_for_status()
+            return r.json()
+        elif did.startswith("did:web:"):
+            domain = did.split(":", 2)[2]
+            domain = domain.replace(":", "/")
+            url = f"https://{domain}/.well-known/did.json"
+            r = requests.get(url, timeout=timeout)
+            r.raise_for_status()
+            return r.json()
+        else:
+            return None
+    except requests.exceptions.RequestException:
+        return None
 
 def count_tokens_with_google_tokenizer(text):
     """
@@ -110,33 +128,6 @@ def trim_posts_and_reexport(original_filename, all_posts, posts_to_keep, handle)
             print(f"⚠️  Trimmed file may still be too large. Consider further trimming.")
     
     return trimmed_filename
-
-def export_posts_to_json(handle):
-
-    """
-    Fetch the DID document for a did:plc or did:web DID.
-
-    Returns the parsed JSON DID document, or None if it couldn't be fetched.
-    """
-    try:
-        if did.startswith("did:plc:"):
-            url = f"https://plc.directory/{did}"
-            r = requests.get(url, timeout=timeout)
-            r.raise_for_status()
-            return r.json()
-        elif did.startswith("did:web:"):
-            # did:web:example.com -> domain = example.com OR did:web:sub:example.com -> join rest with ':'
-            domain = did.split(":", 2)[2]
-            # did:web encoding uses colons for path segments; convert to normal domain/path
-            domain = domain.replace(":", "/")
-            url = f"https://{domain}/.well-known/did.json"
-            r = requests.get(url, timeout=timeout)
-            r.raise_for_status()
-            return r.json()
-        else:
-            return None
-    except requests.exceptions.RequestException:
-        return None
 
 def get_pds_endpoint_from_did_doc(did_doc: dict):
     """
@@ -297,9 +288,6 @@ if __name__ == '__main__':
     print(f"🎯 Target account: {handle}")
     print(f"📥 Starting full export (no authentication)...")
 
-    export_posts_to_json(handle)
-
-        
     final_file = export_posts_to_json(handle)
     
     if final_file:
