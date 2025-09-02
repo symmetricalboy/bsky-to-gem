@@ -29,7 +29,7 @@ def fetch_did_document(did: str, timeout: int = 10):
             return r.json()
         else:
             return None
-    except Exception:
+    except requests.exceptions.RequestException:
         return None
 
 def get_pds_endpoint_from_did_doc(did_doc: dict):
