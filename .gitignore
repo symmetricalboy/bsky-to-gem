@@ -42,8 +42,7 @@ venv.bak/
 Thumbs.db
 
 # Export files (optional - uncomment if you don't want to track exports)
-# *_posts_export.json
-# *_posts_cleaned.json
+*_posts_*.json
 
 # Logs
 *.log
