@@ -26,7 +26,7 @@ def export_posts_to_json(handle):
     except Exception as e:
         print(f"❌ Error resolving handle '{handle}': {e}")
         print("💡 Make sure the handle is correct (e.g., user.bsky.social)")
-        return
+        sys.exit(1)
     
     # Create timestamped filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -43,20 +43,22 @@ def export_posts_to_json(handle):
 
     while True:
         try:
-            # list_records is the key function here. We're asking for records
-            # in the 'app.bsky.feed.post' collection.
             response = client.com.atproto.repo.list_records(
                 {
                     'repo': repo_did,
                     'collection': 'app.bsky.feed.post',
-                    'limit': 100,  # Fetch 100 posts at a time
+                    'limit': 100,
                     'cursor': cursor,
                 }
             )
             
             if not response.records:
-                print("No more posts found.")
-                break
+                if posts_fetched == 0:
+                    print("❌ No posts found or repo not accessible.")
+                    sys.exit(1)
+                else:
+                    print("No more posts found.")
+                    break
 
             for record in response.records:
                 post_data = {
@@ -67,7 +69,6 @@ def export_posts_to_json(handle):
 
                 # Check for and process embedded images
                 if hasattr(record.value, 'embed') and record.value.embed:
-                    # The '$type' field tells us what kind of embed it is
                     if record.value.embed.py_type == 'app.bsky.embed.images':
                         for image in record.value.embed.images:
                             image_url = f"{image_cdn_base}/{repo_did}/{image.image.cid}@jpeg"
@@ -81,21 +82,22 @@ def export_posts_to_json(handle):
             posts_fetched += len(response.records)
             print(f"Fetched {posts_fetched} posts so far...")
             
-            # The cursor is our bookmark to get the next page of results.
             cursor = response.cursor
             if not cursor:
                 print("Reached end of data.")
                 break
                 
         except Exception as e:
-            print(f"An error occurred: {e}")
-            break
+            print(f"❌ Error fetching posts: {e}")
+            sys.exit(1)
 
-    # Sort posts by creation date (newest first)
-    if all_posts:
-        all_posts.sort(key=lambda x: x['created_at'], reverse=True)
+    # Only write the file if posts were collected
+    if not all_posts:
+        print("❌ Export failed: no posts to save.")
+        sys.exit(1)
+
+    all_posts.sort(key=lambda x: x['created_at'], reverse=True)
     
-    # Write the collected data to a JSON file
     with open(output_filename, 'w', encoding='utf-8') as f:
         json.dump(all_posts, f, indent=2, ensure_ascii=False)
 
@@ -105,7 +107,6 @@ def export_posts_to_json(handle):
 
 
 if __name__ == '__main__':
-    # Check command line arguments
     if len(sys.argv) < 2:
         print("🦋 Bluesky Posts Export Tool")
         print("=" * 40)
@@ -118,7 +119,7 @@ if __name__ == '__main__':
         print("Each export gets a unique timestamp in the filename.")
         print("")
         print("🔓 No authentication required - exports public posts only.")
-        exit(1)
+        sys.exit(1)
     
     handle = sys.argv[1]
     
